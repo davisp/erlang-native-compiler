@@ -26,7 +26,10 @@
 %% -------------------------------------------------------------------
 -module(rebar).
 
--export([main/1]).
+-export([
+    main/1,
+    log/3
+]).
 
 -include("rebar.hrl").
 
@@ -61,6 +64,25 @@ main(Args) ->
             io:format("Uncaught error in rebar_core: ~p\n", [Error]),
             rebar_utils:delayed_halt(1)
     end.
+
+
+log(Level, Format, Args) ->
+    {ok, LimitLevel} = application:get_env(enc, log_level),
+    case level_int(LimitLevel) >= level_int(Level) of
+        true ->
+            io:format(destination(Level), Format, Args);
+        false ->
+            ok
+    end.
+
+
+level_int(info) -> 2;
+level_int(warn) -> 1;
+level_int(error) -> 0.
+
+destination(error) -> standard_error;
+destination(_) -> group_leader().
+
 
 %% ====================================================================
 %% Internal functions
@@ -130,7 +152,7 @@ parse_args([NonOpt | Rest]) ->
 
 
 usage() ->
-    ?CONSOLE("enc [-hv] [-c CONFIG_FILE] COMMAND [COMMAND ...]~n", []).
+    ?CONSOLE("enc [-hv] [-c CONFIG_FILE] COMMAND [COMMAND ...]~n~n", []).
 
 
 init_config({Options, _NonOptArgs}) ->
@@ -208,9 +230,6 @@ process_command(compile, Config, AppFile) ->
 
 process_command(clean, Config, AppFile) ->
     rebar_port_compiler:clean(Config, AppFile);
-
-process_command(escriptize, Config, AppFile) ->
-    rebar_escripter:escriptize(Config, AppFile);
 
 process_command(Other, _, _) ->
     ?CONSOLE("Unknown command: ~s~n", [Other]),

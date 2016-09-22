@@ -29,5 +29,5 @@
     snmp,
     edoc
    ]},
-  {env, []}
+  {env, [{log_level, warn}]}
 ]}.

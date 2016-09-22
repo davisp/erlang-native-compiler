@@ -2,6 +2,10 @@
 %% -*- mode: erlang;erlang-indent-level: 4;indent-tabs-mode: nil -*-
 %% ex: ft=erlang ts=4 sw=4 et
 
+-mode(compile).
+
+-include_lib("kernel/include/file.hrl").
+
 main(Args) ->
     case lists:member("--help", Args) of
         true ->
@@ -81,7 +85,9 @@ main(Args) ->
     %% Run rebar compile to do proper .app validation etc.
     %% and rebar escriptize to create the rebar script
     RebarArgs = Args -- ["debug"], %% Avoid trying to run 'debug' command
-    rebar:main(["compile", "escriptize"] ++ RebarArgs),
+    rebar:main(["compile"] ++ RebarArgs),
+
+    escriptize(),
 
     %% Finally, update executable perms for our script on *nix,
     %%  or write out script files on win32.
@@ -165,3 +171,52 @@ write_windows_scripts() ->
         "set rebarscript=%~f0\r\n"
         "escript.exe \"%rebarscript:.cmd=%\" %*\r\n",
     ok = file:write_file("enc.cmd", CmdScript).
+
+
+escriptize() ->
+    AppName = "enc",
+    ScriptName = "enc",
+
+    Files = load_escript_files(AppName, "ebin", "*"),
+
+    {ok, {"mem", ZipBin}} = zip:create("mem", Files, [memory]),
+    Shebang = "#!/usr/bin/env escript\n",
+    Comment = "%%\n",
+    EmuArgs = io_lib:format("%%! -pa ~s/~s/ebin\n", [AppName, AppName]),
+    Script = iolist_to_binary([Shebang, Comment, EmuArgs, ZipBin]),
+    ok = file:write_file(ScriptName, Script),
+
+    %% Finally, update executable perms for our script
+    {ok, #file_info{mode = Mode}} = file:read_file_info(ScriptName),
+    ok = file:change_mode(ScriptName, Mode bor 8#00111).
+
+load_escript_files(AppName, Path, WildCard) ->
+    FileNames = filelib:wildcard(WildCard, Path),
+    Entries = lists:flatmap(fun(FN) ->
+        FPath = filename:join(Path, FN),
+        {ok, Contents} = file:read_file(FPath),
+        ZipPath = filename:join(AppName, FPath),
+        [{ZipPath, Contents} | dir_entries(ZipPath)]
+    end, FileNames),
+    usort(Entries).
+
+%% Given a filename, return zip archive dir entries for each sub-dir.
+%% Required to work around issues fixed in OTP-10071.
+dir_entries(File) ->
+    Dirs = dirs(File),
+    [{Dir ++ "/", <<>>} || Dir <- Dirs].
+
+%% Given "foo/bar/baz", return ["foo", "foo/bar", "foo/bar/baz"].
+dirs(Dir) ->
+    dirs1(filename:split(Dir), "", []).
+
+dirs1([], _, Acc) ->
+    lists:reverse(Acc);
+dirs1([H|T], "", []) ->
+    dirs1(T, H, [H]);
+dirs1([H|T], Last, Acc) ->
+    Dir = filename:join(Last, H),
+    dirs1(T, Dir, [Dir|Acc]).
+
+usort(List) ->
+    lists:ukeysort(1, lists:flatten(List)).
