@@ -388,9 +388,6 @@ version                                  Show version information
 ">>,
     io:put_chars(S).
 
-get_jobs(Config) ->
-    rebar_config:get_global(Config, jobs, ?DEFAULT_JOBS).
-
 %%
 %% options accepted via getopt
 %%

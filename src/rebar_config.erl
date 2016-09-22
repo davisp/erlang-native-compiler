@@ -37,11 +37,9 @@
          get_global/3,
          save_env/3,
          get_env/2,
-         set_skip_dir/2,
          set_xconf/3,
          get_xconf/2,
-         get_xconf/3,
-         erase_xconf/2]).
+         get_xconf/3]).
 
 -include("rebar.hrl").
 
@@ -108,10 +106,15 @@ get_list(Config, Key, Default) ->
 get_local(Config, Key, Default) ->
     proplists:get_value(Key, local_opts(Config#config.opts, []), Default).
 
--spec set(config(), key(), term()) -> config().
-set(Config, Key, Value) ->
-    Opts = proplists:delete(Key, Config#config.opts),
-    Config#config { opts = [{Key, Value} | Opts] }.
+-spec set_global(config(), key(), term()) -> config().
+set_global(Config, jobs=Key, Value) when is_list(Value) ->
+    set_global(Config, Key, list_to_integer(Value));
+set_global(Config, jobs=Key, Value) when is_integer(Value) ->
+    NewGlobals = dict:store(Key, erlang:max(1, Value), Config#config.globals),
+    Config#config{globals = NewGlobals};
+set_global(Config, Key, Value) ->
+    NewGlobals = dict:store(Key, Value, Config#config.globals),
+    Config#config{globals = NewGlobals}.
 
 -spec get_global(config(), key(), term()) -> term().
 get_global(Config, Key, Default) ->
@@ -147,22 +150,6 @@ save_env(Config, Mod, Env) ->
 get_env(Config, Mod) ->
     dict:fetch(Mod, Config#config.envs).
 
--spec set_skip_dir(config(), file:filename()) -> config().
-set_skip_dir(Config, Dir) ->
-    OldSkipDirs = Config#config.skip_dirs,
-    NewSkipDirs = case is_skip_dir(Config, Dir) of
-                      false ->
-                          ?DEBUG("Adding skip dir: ~s\n", [Dir]),
-                          dict:store(Dir, true, OldSkipDirs);
-                      true ->
-                          OldSkipDirs
-                  end,
-    Config#config{skip_dirs = NewSkipDirs}.
-
--spec is_skip_dir(config(), file:filename()) -> boolean().
-is_skip_dir(Config, Dir) ->
-    dict:is_key(Dir, Config#config.skip_dirs).
-
 -spec set_xconf(config(), term(), term()) -> config().
 set_xconf(Config, Key, Value) ->
     NewXconf = dict:store(Key, Value, Config#config.xconf),
@@ -181,11 +168,6 @@ get_xconf(Config, Key, Default) ->
         {ok, Value} ->
             Value
     end.
-
--spec erase_xconf(config(), term()) -> config().
-erase_xconf(Config, Key) ->
-    NewXconf = dict:erase(Key, Config#config.xconf),
-    Config#config{xconf = NewXconf}.
 
 %% ===================================================================
 %% Internal functions
