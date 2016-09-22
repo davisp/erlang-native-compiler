@@ -28,14 +28,10 @@
 
 -export([is_app_dir/0,
          is_app_dir/1,
-         is_app_src/1,
-         app_src_to_app/1,
          app_name/2,
-         app_applications/2,
          app_vsn/2,
          is_skipped_app/2]).
 
--export([load_app_file/2]). % TEMPORARY
 
 -include("rebar.hrl").
 
@@ -73,36 +69,12 @@ is_app_dir(Dir) ->
 	end.
 
 
-is_app_src(Filename) ->
-    %% If removing the extension .app.src yields a shorter name,
-    %% this is an .app.src file.
-    Filename =/= filename:rootname(Filename, ".app.src") orelse
-        Filename =/= filename:rootname(Filename, ".app.src.script").
-
-app_src_to_app(Filename) ->
-    Filebase =  case filename:rootname(Filename, ".app.src") of
-                    Filename ->
-                        filename:basename(Filename, ".app.src.script");
-                    _ ->
-                        filename:basename(Filename, ".app.src")
-                end,
-    filename:join("ebin", Filebase ++ ".app").
-
 app_name(Config, AppFile) ->
     case load_app_file(Config, AppFile) of
         {ok, NewConfig, AppName, _} ->
             {NewConfig, AppName};
         {error, Reason} ->
             ?ABORT("Failed to extract name from ~s: ~p\n",
-                   [AppFile, Reason])
-    end.
-
-app_applications(Config, AppFile) ->
-    case load_app_file(Config, AppFile) of
-        {ok, NewConfig, _, AppInfo} ->
-            {NewConfig, get_value(applications, AppInfo, AppFile)};
-        {error, Reason} ->
-            ?ABORT("Failed to extract applications from ~s: ~p\n",
                    [AppFile, Reason])
     end.
 

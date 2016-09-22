@@ -27,11 +27,7 @@
 -module(rebar).
 
 -export([main/1,
-         run/2,
-         help/0,
-         parse_args/1,
-         version/0,
-         get_jobs/1]).
+         run/2]).
 
 -include("rebar.hrl").
 
@@ -76,14 +72,6 @@ run(BaseConfig, Commands) ->
 %% Internal functions
 %% ====================================================================
 
-run(["help"|RawCmds]) when RawCmds =/= [] ->
-    ok = load_rebar_app(),
-    Cmds = unabbreviate_command_names(RawCmds),
-    Args = parse_args(Cmds),
-    BaseConfig = init_config(Args),
-    {BaseConfig1, _} = save_options(BaseConfig, Args),
-    BaseConfig2 = init_config1(BaseConfig1),
-    rebar_core:help(BaseConfig2, [list_to_atom(C) || C <- Cmds]);
 run(["help"]) ->
     help();
 run(["info"|_]) ->
@@ -169,8 +157,43 @@ run_aux(BaseConfig, Commands) ->
 
     BaseConfig1 = init_config1(BaseConfig),
 
+    %% Make sure we're an app directory
+    AppFile = case rebar_app_utils:is_app_dir() of
+        {true, AppFile0} ->
+            AppFile0;
+        false ->
+            ?FAIL
+    end,
+
+    % Setup our environment
+    BaseConfig2 = setup_envs(BaseConfig1, [rebar_deps, rebar_port_compiler]),
+
     %% Process each command, resetting any state between each one
-    rebar_core:process_commands(CommandAtoms, BaseConfig1).
+    lists:foreach(fun(Command) ->
+        process_command(Command, BaseConfig2, AppFile)
+    end, CommandAtoms).
+
+
+setup_envs(Config, Modules) ->
+    lists:foldl(fun(Module, CfgAcc) ->
+        Env = Module:setup_env(CfgAcc),
+        rebar_config:save_env(CfgAcc, Module, Env)
+    end, Config, Modules).
+
+
+process_command(compile, Config, AppFile) ->
+    rebar_port_compiler:compile(Config, AppFile);
+
+process_command(clean, Config, AppFile) ->
+    rebar_port_compiler:clean(Config, AppFile);
+
+process_command(escriptize, Config, AppFile) ->
+    rebar_escripter:escriptize(Config, AppFile);
+
+process_command(Other, _, _) ->
+    ?CONSOLE("Unknown command: ~s~n", [Other]),
+    ?FAIL.
+
 
 %%
 %% print help/usage string
@@ -420,8 +443,7 @@ command_names() ->
     [
      "clean",
      "compile",
-     "escriptize",
-     "xref"
+     "escriptize"
     ].
 
 unabbreviate_command_names([]) ->

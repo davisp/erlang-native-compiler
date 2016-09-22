@@ -33,18 +33,11 @@
          get/3,
          get_local/3,
          get_list/3,
-         get_all/2,
-         set/3,
          set_global/3,
          get_global/3,
-         is_recursive/1,
          save_env/3,
          get_env/2,
-         reset_envs/1,
          set_skip_dir/2,
-         is_skip_dir/2,
-         reset_skip_dirs/1,
-         clean_config/2,
          set_xconf/3,
          get_xconf/2,
          get_xconf/3,
@@ -115,24 +108,10 @@ get_list(Config, Key, Default) ->
 get_local(Config, Key, Default) ->
     proplists:get_value(Key, local_opts(Config#config.opts, []), Default).
 
--spec get_all(config(), key()) -> list(term()).
-get_all(Config, Key) ->
-    proplists:get_all_values(Key, Config#config.opts).
-
 -spec set(config(), key(), term()) -> config().
 set(Config, Key, Value) ->
     Opts = proplists:delete(Key, Config#config.opts),
     Config#config { opts = [{Key, Value} | Opts] }.
-
--spec set_global(config(), key(), term()) -> config().
-set_global(Config, jobs=Key, Value) when is_list(Value) ->
-    set_global(Config, Key, list_to_integer(Value));
-set_global(Config, jobs=Key, Value) when is_integer(Value) ->
-    NewGlobals = dict:store(Key, erlang:max(1, Value), Config#config.globals),
-    Config#config{globals = NewGlobals};
-set_global(Config, Key, Value) ->
-    NewGlobals = dict:store(Key, Value, Config#config.globals),
-    Config#config{globals = NewGlobals}.
 
 -spec get_global(config(), key(), term()) -> term().
 get_global(Config, Key, Default) ->
@@ -142,10 +121,6 @@ get_global(Config, Key, Default) ->
         {ok, Value} ->
             Value
     end.
-
--spec is_recursive(config()) -> boolean().
-is_recursive(Config) ->
-    get_xconf(Config, recursive, false).
 
 -spec consult_file(file:filename()) -> term().
 consult_file(File) ->
@@ -172,10 +147,6 @@ save_env(Config, Mod, Env) ->
 get_env(Config, Mod) ->
     dict:fetch(Mod, Config#config.envs).
 
--spec reset_envs(config()) -> config().
-reset_envs(Config) ->
-    Config#config{envs = new_env()}.
-
 -spec set_skip_dir(config(), file:filename()) -> config().
 set_skip_dir(Config, Dir) ->
     OldSkipDirs = Config#config.skip_dirs,
@@ -191,10 +162,6 @@ set_skip_dir(Config, Dir) ->
 -spec is_skip_dir(config(), file:filename()) -> boolean().
 is_skip_dir(Config, Dir) ->
     dict:is_key(Dir, Config#config.skip_dirs).
-
--spec reset_skip_dirs(config()) -> config().
-reset_skip_dirs(Config) ->
-    Config#config{skip_dirs = new_skip_dirs()}.
 
 -spec set_xconf(config(), term(), term()) -> config().
 set_xconf(Config, Key, Value) ->
@@ -219,11 +186,6 @@ get_xconf(Config, Key, Default) ->
 erase_xconf(Config, Key) ->
     NewXconf = dict:erase(Key, Config#config.xconf),
     Config#config{xconf = NewXconf}.
-
-%% TODO: reconsider after config inheritance removal/redesign
--spec clean_config(config(), config()) -> config().
-clean_config(Old, New) ->
-    New#config{opts=Old#config.opts}.
 
 %% ===================================================================
 %% Internal functions

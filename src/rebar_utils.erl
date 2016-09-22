@@ -225,12 +225,7 @@ abort(String, Args) ->
 %% undocumented exported fun and has been removed in R14.
 escript_foldl(Fun, Acc, File) ->
     {module, zip} = code:ensure_loaded(zip),
-    case erlang:function_exported(zip, foldl, 3) of
-        true ->
-            emulate_escript_foldl(Fun, Acc, File);
-        false ->
-            escript:foldl(Fun, Acc, File)
-    end.
+    emulate_escript_foldl(Fun, Acc, File).
 
 find_executable(Name) ->
     case os:find_executable(Name) of
