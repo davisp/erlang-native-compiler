@@ -51,8 +51,7 @@ compile(Config, AppFile) ->
         [] ->
             ok;
         Specs ->
-            SharedEnv = rebar_config:get_env(Config, rebar_deps) ++
-                rebar_config:get_env(Config, ?MODULE),
+            SharedEnv = rebar_config:get_env(Config, ?MODULE),
 
             %% Compile each of the sources
             NewBins = compile_sources(Config, Specs, SharedEnv),
@@ -93,15 +92,15 @@ clean(Config, AppFile) ->
             ok;
         Specs ->
             lists:foreach(fun(#spec{target=Target, objects=Objects}) ->
-                                  rebar_file_utils:delete_each([Target]),
-                                  rebar_file_utils:delete_each(Objects),
-                                  rebar_file_utils:delete_each(port_deps(Objects))
+                                  rebar_utils:delete_each([Target]),
+                                  rebar_utils:delete_each(Objects),
+                                  rebar_utils:delete_each(port_deps(Objects))
                           end, Specs)
     end,
     ok.
 
 setup_env(Config) ->
-    setup_env(Config, []).
+    setup_env(Config, default_env(Config)).
 
 %% ===================================================================
 %% Internal functions
@@ -179,6 +178,29 @@ info_help(Description) ->
                       {"linux", "priv/hello_linux", ["c_src/hello_linux.c"]},
                       {"linux", "priv/hello_linux", ["c_src/*.c"], [{env, []}]}]}
        ]).
+
+%% set REBAR_DEPS_DIR and ERL_LIBS environment variables
+default_env(Config) ->
+    BaseDir = rebar_utils:base_dir(Config),
+    DepsDir0 = rebar_config:get_xconf(Config, deps_dir, "deps"),
+    DepsDir = filename:dirname(filename:join([BaseDir, DepsDir0, "dummy"])),
+
+    %% include rebar's DepsDir in ERL_LIBS
+    Separator = case os:type() of
+        {win32, nt} -> ";";
+        _ -> ":"
+    end,
+
+    ERL_LIBS = case os:getenv("ERL_LIBS") of
+        false ->
+            {"ERL_LIBS", DepsDir};
+        PrevValue ->
+            {"ERL_LIBS", DepsDir ++ Separator ++ PrevValue}
+    end,
+    [
+        {"REBAR_DEPS_DIR", DepsDir},
+        ERL_LIBS
+    ].
 
 setup_env(Config, ExtraEnv) ->
     %% Extract environment values from the config (if specified) and
@@ -312,10 +334,8 @@ bin_deps(Bin) ->
     case file:read_file(DepFile) of
         {ok, Deps} ->
             Ds = parse_bin_deps(list_to_binary(Bin), Deps),
-            ?DEBUG("Deps of ~p: ~p\n", [Bin, Ds]),
             Ds;
-        {error, Err} ->
-            ?DEBUG("Skipping deps parse of ~s: ~p\n", [DepFile, Err]),
+        {error, _Err} ->
             []
     end.
 
@@ -331,10 +351,8 @@ needs_link(SoName, NewBins) ->
     MaxLastMod = lists:max([filelib:last_modified(B) || B <- NewBins]),
     case filelib:last_modified(SoName) of
         0 ->
-            ?DEBUG("Last mod is 0 on ~s\n", [SoName]),
             true;
         Other ->
-            ?DEBUG("Checking ~p >= ~p\n", [MaxLastMod, Other]),
             MaxLastMod >= Other
     end.
 
@@ -360,7 +378,7 @@ port_spec_from_legacy(Config, AppFile) ->
     Target = case rebar_config:get(Config, so_name, undefined) of
                  undefined ->
                      %% Generate a sensible default from app file
-                     {_, AppName} = rebar_app_utils:app_name(Config, AppFile),
+                     {_, AppName} = rebar_utils:app_name(Config, AppFile),
                      filename:join("priv",
                                    lists:concat([AppName, "_drv.so"]));
                  AName ->

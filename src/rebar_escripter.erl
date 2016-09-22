@@ -26,11 +26,8 @@
 %% -------------------------------------------------------------------
 -module(rebar_escripter).
 
--export([escriptize/2,
-         clean/2]).
+-export([escriptize/2]).
 
-%% for internal use only
--export([info/2]).
 
 -include("rebar.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -42,7 +39,7 @@
 escriptize(Config0, AppFile) ->
     %% Extract the application name from the archive -- this is the default
     %% name of the generated script
-    {Config, AppName} = rebar_app_utils:app_name(Config0, AppFile),
+    {Config, AppName} = rebar_utils:app_name(Config0, AppFile),
     AppNameStr = atom_to_list(AppName),
 
     %% Get the output filename for the escript -- this may include dirs
@@ -97,43 +94,6 @@ escriptize(Config0, AppFile) ->
     ok = file:change_mode(Filename, Mode bor 8#00111),
     {ok, Config}.
 
-clean(Config0, AppFile) ->
-    %% Extract the application name from the archive -- this is the default
-    %% name of the generated script
-    {Config, AppName} = rebar_app_utils:app_name(Config0, AppFile),
-
-    %% Get the output filename for the escript -- this may include dirs
-    Filename = rebar_config:get_local(Config, escript_name, AppName),
-    rebar_file_utils:delete_each([Filename]),
-    {ok, Config}.
-
-%% ===================================================================
-%% Internal functions
-%% ===================================================================
-
-info(help, escriptize) ->
-    info_help("Generate escript archive");
-info(help, clean) ->
-    info_help("Delete generated escript archive").
-
-info_help(Description) ->
-    ?CONSOLE(
-       "~s.~n"
-       "~n"
-       "Valid rebar.config options:~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n",
-       [
-        Description,
-        {escript_name, "application"},
-        {escript_incl_apps, []},
-        {escript_shebang, "#!/usr/bin/env escript\n"},
-        {escript_comment, "%%\n"},
-        {escript_emu_args, "%%! -pa application/application/ebin\n"}
-       ]).
 
 get_app_beams([], Acc) ->
     Acc;

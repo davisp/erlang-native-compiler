@@ -26,8 +26,7 @@
 %% -------------------------------------------------------------------
 -module(rebar).
 
--export([main/1,
-         run/2]).
+-export([main/1]).
 
 -include("rebar.hrl").
 
@@ -63,29 +62,21 @@ main(Args) ->
             rebar_utils:delayed_halt(1)
     end.
 
-%% Erlang-API entry point
-run(BaseConfig, Commands) ->
-    _ = application:load(rebar),
-    run_aux(BaseConfig, Commands).
-
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
 run(["help"]) ->
-    help();
-run(["info"|_]) ->
-    %% Catch calls to 'rebar info' to avoid treating plugins' info/2 functions
-    %% as commands.
-    ?CONSOLE("Command 'info' not understood or not applicable~n", []);
+    usage(),
+    help(compile);
+run(["help" | RawCommands]) ->
+    lists:foreach(fun help/1, [list_to_atom(C) || C <- RawCommands]);
 run(["version"]) ->
     ok = load_rebar_app(),
     %% Display vsn and build time info
     version();
 run(RawArgs) ->
     ok = load_rebar_app(),
-    %% Parse out command line arguments -- what's left is a list of commands to
-    %% run -- and start running commands
     Args = parse_args(RawArgs),
     BaseConfig = init_config(Args),
     {BaseConfig1, Cmds} = save_options(BaseConfig, Args),
@@ -95,13 +86,58 @@ load_rebar_app() ->
     %% Pre-load the rebar app so that we get default configuration
     ok = application:load(enc).
 
+help(compile) ->
+    rebar_port_compiler:info(help, compile);
+
+help(clean) ->
+    rebar_port_compiler:info(help, clean);
+
+help(Command) ->
+    ?CONSOLE("No help available for \"~p\"~n", [Command]).
+
+
+parse_args([]) ->
+    {[], []};
+
+parse_args(["-h" | _]) ->
+    usage(),
+    help(compile),
+    rebar_utils:delayed_halt(0);
+
+parse_args(["--help" | _]) ->
+    usage(),
+    help(compile),
+    rebar_utils:delayed_halt(0);
+
+parse_args(["-v" | _]) ->
+    version(),
+    rebar_utils:delayed_halt(0);
+
+parse_args(["--version" | _]) ->
+    version(),
+    rebar_utils:delayed_halt(0);
+
+parse_args(["-c", FileName | Rest]) ->
+    {Opts, NonOpts} = parse_args(Rest),
+    {[{config, FileName} | Opts], NonOpts};
+
+parse_args(["--config", FileName | Rest]) ->
+    parse_args(["-c", FileName | Rest]);
+
+parse_args([NonOpt | Rest]) ->
+    {Opts, NonOpts} = parse_args(Rest),
+    {Opts, [NonOpt | NonOpts]}.
+
+
+usage() ->
+    ?CONSOLE("enc [-hv] [-c CONFIG_FILE] COMMAND [COMMAND ...]~n", []).
+
+
 init_config({Options, _NonOptArgs}) ->
     %% If $HOME/.rebar/config exists load and use as global config
     GlobalConfigFile = filename:join([os:getenv("HOME"), ".rebar", "config"]),
     GlobalConfig = case filelib:is_regular(GlobalConfigFile) of
                        true ->
-                           ?DEBUG("Load global config file ~p~n",
-                                  [GlobalConfigFile]),
                            rebar_config:new(GlobalConfigFile);
                        false ->
                            rebar_config:new()
@@ -115,11 +151,7 @@ init_config({Options, _NonOptArgs}) ->
                             rebar_config:set_global(GlobalConfig, config, Conf)
                     end,
 
-    GlobalConfig2 = set_log_level(GlobalConfig1, Options),
-    %% Initialize logging system
-    ok = rebar_log:init(GlobalConfig2),
-
-    BaseConfig = rebar_config:base_config(GlobalConfig2),
+    BaseConfig = rebar_config:base_config(GlobalConfig1),
 
     %% Keep track of how many operations we do, so we can detect bad commands
     BaseConfig1 = rebar_config:set_xconf(BaseConfig, operations, 0),
@@ -131,7 +163,6 @@ init_config1(BaseConfig) ->
     %% resources out of the escript
     ScriptName = filename:absname(escript:script_name()),
     BaseConfig1 = rebar_config:set_xconf(BaseConfig, escript, ScriptName),
-    ?DEBUG("Rebar location: ~p\n", [ScriptName]),
     %% Note the top-level directory for reference
     AbsCwd = filename:absname(rebar_utils:get_cwd()),
     rebar_config:set_xconf(BaseConfig1, base_dir, AbsCwd).
@@ -143,30 +174,21 @@ run_aux(BaseConfig, Commands) ->
         {error,{already_started,crypto}} -> ok
     end,
 
-    %% Make sure memoization server is running
-    case rmemo:start() of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok
-    end,
-
-    %% Make sure rebar_rnd module is generated, compiled, and loaded
-    {ok, rebar_rnd} = rebar_rand_compat:init("rebar_rnd"),
-
     %% Convert command strings to atoms
     CommandAtoms = [list_to_atom(C) || C <- Commands],
 
     BaseConfig1 = init_config1(BaseConfig),
 
     %% Make sure we're an app directory
-    AppFile = case rebar_app_utils:is_app_dir() of
+    AppFile = case rebar_utils:is_app_dir() of
         {true, AppFile0} ->
             AppFile0;
         false ->
-            ?FAIL
+            rebar_utils:delayed_halt(1)
     end,
 
     % Setup our environment
-    BaseConfig2 = setup_envs(BaseConfig1, [rebar_deps, rebar_port_compiler]),
+    BaseConfig2 = setup_envs(BaseConfig1, [rebar_port_compiler]),
 
     %% Process each command, resetting any state between each one
     lists:foreach(fun(Command) ->
@@ -192,143 +214,14 @@ process_command(escriptize, Config, AppFile) ->
 
 process_command(Other, _, _) ->
     ?CONSOLE("Unknown command: ~s~n", [Other]),
-    ?FAIL.
+    rebar_utils:delayed_halt(1).
 
-
-%%
-%% print help/usage string
-%%
-help() ->
-    OptSpecList = option_spec_list(),
-    rebar_getopt:usage(OptSpecList, "rebar",
-                       "[var=value,...] <command,...>",
-                       [{"var=value", "rebar global variables (e.g. force=1)"},
-                        {"command", "Command to run (e.g. compile)"}]),
-
-    ?CONSOLE("To see a list of built-in commands, execute rebar -c.~n~n", []),
-    ?CONSOLE(
-       "Type 'rebar help <CMD1> <CMD2>' for help on specific commands."
-       "~n~n", []),
-    ?CONSOLE(
-       "rebar allows you to abbreviate the command to run:~n"
-       "$ rebar co           # same as rebar compile~n"
-       "$ rebar eu           # same as rebar eunit~n"
-       "$ rebar g-d          # same as rebar get-deps~n"
-       "$ rebar x eu         # same as rebar xref eunit~n"
-       "$ rebar l-d          # same as rebar list-deps~n"
-       "$ rebar l-d l-t      # same as rebar list-deps list-templates~n"
-       "$ rebar list-d l-te  # same as rebar list-deps list-templates~n"
-       "~n", []),
-    ?CONSOLE(
-       "Core rebar.config options:~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "  ~p~n"
-       "Core command line options:~n"
-       "  apps=app1,app2 (specify apps to process)~n"
-       "  skip_apps=app1,app2 (specify apps to skip)~n",
-       [
-        {recursive_cmds, []},
-        {require_erts_vsn, ".*"},
-        {require_otp_vsn, ".*"},
-        {require_min_otp_vsn, ".*"},
-        {lib_dirs, []},
-        {sub_dirs, ["dir1", "dir2"]},
-        {plugins, [plugin1, plugin2]},
-        {plugin_dir, "some_other_directory"},
-        {pre_hooks, [{clean, "./prepare_package_files.sh"},
-                     {"linux", compile, "c_src/build_linux.sh"},
-                     {compile, "escript generate_headers"},
-                     {compile, "escript check_headers"}]},
-        {post_hooks, [{clean, "touch file1.out"},
-                      {"freebsd", compile, "c_src/freebsd_tweaks.sh"},
-                      {eunit, "touch file2.out"},
-                      {compile, "touch postcompile.out"}]}
-       ]),
-    ?CONSOLE(
-       "Environment variables:~n"
-       "  REBAR_DEPS_PREFER_LIBS to look for dependecies in system libs prior fetching.~n"
-       "  REBAR_VSN_CACHE_FILE to load vsn cache from and save to specified file.~n"
-       "~n", []).
-
-%%
-%% Parse command line arguments using getopt and also filtering out any
-%% key=value pairs. What's left is the list of commands to run
-%%
-parse_args(RawArgs) ->
-    %% Parse getopt options
-    OptSpecList = option_spec_list(),
-    case rebar_getopt:parse(OptSpecList, RawArgs) of
-        {ok, Args} ->
-            Args;
-        {error, {Reason, Data}} ->
-            ?ERROR("~s ~p~n~n", [Reason, Data]),
-            help(),
-            rebar_utils:delayed_halt(1)
-    end.
 
 save_options(Config, {Options, NonOptArgs}) ->
-    %% Check options and maybe halt execution
-    ok = show_info_maybe_halt(Options, NonOptArgs),
-
     GlobalDefines = proplists:get_all_values(defines, Options),
-
     Config1 = rebar_config:set_xconf(Config, defines, GlobalDefines),
+    filter_flags(Config1, NonOptArgs, []).
 
-    %% Setup flag to keep running after a single command fails
-    Config3 = rebar_config:set_xconf(Config1, keep_going,
-                                     proplists:get_bool(keep_going, Options)),
-
-    %% Setup flag to enable recursive application of commands
-    Config4 = rebar_config:set_xconf(Config3, recursive,
-                                     proplists:get_bool(recursive, Options)),
-
-    %% Set global variables based on getopt options
-    Config5 = set_global_flag(Config4, Options, force),
-    Config6 = case proplists:get_value(jobs, Options, ?DEFAULT_JOBS) of
-                  ?DEFAULT_JOBS ->
-                      Config5;
-                  Jobs ->
-                      rebar_config:set_global(Config5, jobs, Jobs)
-              end,
-
-    %% Filter all the flags (i.e. strings of form key=value) from the
-    %% command line arguments. What's left will be the commands to run.
-    {Config7, RawCmds} = filter_flags(Config6, NonOptArgs, []),
-    {Config7, unabbreviate_command_names(RawCmds)}.
-
-%%
-%% set log level based on getopt option
-%%
-set_log_level(Config, Options) ->
-    {IsVerbose, Level} =
-        case proplists:get_bool(quiet, Options) of
-            true ->
-                {false, rebar_log:error_level()};
-            false ->
-                DefaultLevel = rebar_log:default_level(),
-                case proplists:get_all_values(verbose, Options) of
-                    [] ->
-                        {false, DefaultLevel};
-                    Verbosities ->
-                        {true, DefaultLevel + lists:last(Verbosities)}
-                end
-        end,
-
-    case IsVerbose of
-        true ->
-            Config1 = rebar_config:set_xconf(Config, is_verbose, true),
-            rebar_config:set_global(Config1, verbose, Level);
-        false ->
-            rebar_config:set_global(Config, verbose, Level)
-    end.
 
 %%
 %% show version information and halt
@@ -337,79 +230,6 @@ version() ->
     {ok, Vsn} = application:get_key(enc, vsn),
     ?CONSOLE("enc ~s ~s ~s ~s\n",
              [Vsn, ?OTP_INFO, ?BUILD_TIME, ?VCS_INFO]).
-
-
-%%
-%% set global flag based on getopt option boolean value
-%%
-set_global_flag(Config, Options, Flag) ->
-    Value = case proplists:get_bool(Flag, Options) of
-                true ->
-                    "1";
-                false ->
-                    "0"
-            end,
-    rebar_config:set_global(Config, Flag, Value).
-
-%%
-%% show info and maybe halt execution
-%%
-show_info_maybe_halt(Opts, NonOptArgs) ->
-    false = show_info_maybe_halt(help, Opts, fun help/0),
-    false = show_info_maybe_halt(commands, Opts, fun commands/0),
-    false = show_info_maybe_halt(version, Opts, fun version/0),
-    case NonOptArgs of
-        [] ->
-            ?CONSOLE("No command to run specified!~n",[]),
-            help(),
-            rebar_utils:delayed_halt(1);
-        _ ->
-            ok
-    end.
-
-show_info_maybe_halt(O, Opts, F) ->
-    case proplists:get_bool(O, Opts) of
-        true ->
-            F(),
-            rebar_utils:delayed_halt(0);
-        false ->
-            false
-    end.
-
-%%
-%% print known commands
-%%
-commands() ->
-    S = <<"clean                                    Clean
-compile                                  Compile sources
-escriptize                               Generate escript archive
-help                                     Show the program options
-version                                  Show version information
-">>,
-    io:put_chars(S).
-
-%%
-%% options accepted via getopt
-%%
-option_spec_list() ->
-    Jobs = ?DEFAULT_JOBS,
-    JobsHelp = io_lib:format(
-                 "Number of concurrent workers a command may use. Default: ~B",
-                 [Jobs]),
-    [
-     %% {Name, ShortOpt, LongOpt, ArgSpec, HelpMsg}
-     {help,     $h, "help",     undefined, "Show the program options"},
-     {commands, $c, "commands", undefined, "Show available commands"},
-     {verbose,  $v, "verbose",  integer,   "Verbosity level (-v, -vv)"},
-     {quiet,    $q, "quiet",    boolean,   "Quiet, only print error messages"},
-     {version,  $V, "version",  undefined, "Show version information"},
-     {force,    $f, "force",    undefined, "Force"},
-     {defines,  $D, undefined,  string,    "Define compiler macro"},
-     {jobs,     $j, "jobs",     integer,   JobsHelp},
-     {config,   $C, "config",   string,    "Rebar config file to use"},
-     {keep_going, $k, "keep-going", undefined,
-      "Keep running after a command fails"}
-    ].
 
 %%
 %% Seperate all commands (single-words) from flags (key=value) and store
@@ -435,66 +255,3 @@ filter_flags(Config, [Item | Rest], Commands) ->
             ?CONSOLE("Ignoring command line argument: ~p\n", [Other]),
             filter_flags(Config, Rest, Commands)
     end.
-
-command_names() ->
-    [
-     "clean",
-     "compile",
-     "escriptize"
-    ].
-
-unabbreviate_command_names([]) ->
-    [];
-unabbreviate_command_names([Command | Commands]) ->
-    case get_command_name_candidates(Command) of
-        [] ->
-            %% let the rest of the code detect that the command doesn't exist
-            %% (this would perhaps be a good place to fail)
-            [Command | unabbreviate_command_names(Commands)];
-        [FullCommand] ->
-            [FullCommand | unabbreviate_command_names(Commands)];
-        Candidates ->
-            ?ABORT("Found more than one match for abbreviated command name"
-                   " '~s',~nplease be more specific. Possible candidates:~n"
-                   "  ~s~n",
-                   [Command, string:join(Candidates, ", ")])
-    end.
-
-get_command_name_candidates(Command) ->
-    %% Get the command names which match the given (abbreviated) command name.
-    %% * "c"        matches commands like compile, clean and create-app
-    %% * "create"   matches command create only, since it's unique
-    %% * "create-"  matches commands starting with create-
-    %% * "c-a"      matches create-app
-    %% * "create-a" matches create-app
-    %% * "c-app"    matches create-app
-    Candidates = [Candidate || Candidate <- command_names(),
-                               is_command_name_candidate(Command, Candidate)],
-    %% Is there a complete match?  If so return only that, return a
-    %% list of candidates otherwise
-    case lists:member(Command, Candidates) of
-        true  -> [Command];
-        false -> Candidates
-    end.
-
-is_command_name_candidate(Command, Candidate) ->
-    lists:prefix(Command, Candidate)
-        orelse is_command_name_sub_word_candidate(Command, Candidate).
-
-is_command_name_sub_word_candidate(Command, Candidate) ->
-    %% Allow for parts of commands to be abbreviated, i.e. create-app
-    %% can be shortened to "create-a", "c-a" or "c-app" (but not
-    %% "create-" since that would be ambiguous).
-    ReOpts = [{return, list}],
-    CommandSubWords = re:split(Command, "-", ReOpts),
-    CandidateSubWords = re:split(Candidate, "-", ReOpts),
-    is_command_name_sub_word_candidate_aux(CommandSubWords, CandidateSubWords).
-
-is_command_name_sub_word_candidate_aux([CmdSW | CmdSWs],
-                                       [CandSW | CandSWs]) ->
-    lists:prefix(CmdSW, CandSW) andalso
-        is_command_name_sub_word_candidate_aux(CmdSWs, CandSWs);
-is_command_name_sub_word_candidate_aux([], []) ->
-    true;
-is_command_name_sub_word_candidate_aux(_CmdSWs, _CandSWs) ->
-    false.

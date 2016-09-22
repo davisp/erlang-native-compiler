@@ -6,22 +6,12 @@
   {vsn, "2.6.4"},
   {modules, [ enc,
               rebar,
-              rebar_app_utils,
               rebar_appups,
               rebar_base_compiler,
-              rebar_cleaner,
               rebar_config,
-              rebar_deps,
-              rebar_erlc_compiler,
               rebar_escripter,
-              rebar_file_utils,
-              rebar_log,
               rebar_port_compiler,
-              rebar_utils,
-              rebar_metacmds,
-              rebar_getopt,
-              rmemo,
-              rebar_rand_compat ]},
+              rebar_utils]},
   {registered, []},
   {applications,
    [
@@ -39,62 +29,5 @@
     snmp,
     edoc
    ]},
-  {env, [
-         %% Default log level
-         {log_level, warn},
-
-         %% Log colored
-         {log_colored, uncolored},
-
-         %% any_dir processing modules
-         {any_dir_modules, [
-                            rebar_require_vsn,
-                            rebar_deps,
-                            rebar_subdirs,
-                            rebar_templater,
-                            rebar_cleaner
-                           ]},
-
-         %% Dir specific processing modules
-         {modules, [
-                    {app_dir, [
-                               rebar_abnfc_compiler,
-                               rebar_proto_compiler,
-                               rebar_protobuffs_compiler,
-                               rebar_proto_gpb_compiler,
-                               rebar_neotoma_compiler,
-                               rebar_asn1_compiler,
-                               rebar_dia_compiler,
-                               rebar_dialyzer,
-                               rebar_erlc_compiler,
-                               rebar_lfe_compiler,
-                               rebar_erlydtl_compiler,
-                               rebar_port_compiler,
-                               rebar_otp_app,
-                               rebar_otp_appup,
-                               rebar_ct,
-                               rebar_eunit,
-                               rebar_qc,
-                               rebar_escripter,
-                               rebar_edoc,
-                               rebar_shell,
-                               rebar_xref,
-                               rebar_metacmds
-                              ]},
-
-                    {rel_dir, [
-                               rebar_appups,
-                               rebar_reltool,
-                               rebar_upgrade
-                              ]}
-                   ]},
-         {recursive_cmds, [
-                           'check-deps',
-                           compile,
-                           'delete-deps',
-                           'get-deps',
-                           'list-deps',
-                           'update-deps'
-                          ]}
-        ]}
- ]}.
+  {env, []}
+]}.

@@ -136,7 +136,6 @@ consult_file(File) ->
                 true ->
                     consult_and_eval(File, Script);
                 false ->
-                    ?DEBUG("Consult config file ~p~n", [File]),
                     file:consult(File)
             end
     end.
@@ -200,7 +199,6 @@ new(ParentConfig, ConfName) ->
 
 -spec consult_and_eval(file:filename(), file:filename()) -> {ok, term()}.
 consult_and_eval(File, Script) ->
-    ?DEBUG("Evaluating config script ~p~n", [Script]),
     ConfigData = try_consult(File),
     file:script(Script, bs([{'CONFIG', ConfigData}, {'SCRIPT', Script}])).
 
@@ -213,7 +211,6 @@ remove_script_ext(F) ->
 try_consult(File) ->
     case file:consult(File) of
         {ok, Terms} ->
-            ?DEBUG("Consult config file ~p~n", [File]),
             Terms;
         {error, enoent} ->
             [];
