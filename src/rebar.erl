@@ -101,14 +101,7 @@ run(RawArgs) ->
     Args = parse_args(RawArgs),
     BaseConfig = init_config(Args),
     {BaseConfig1, Cmds} = save_options(BaseConfig, Args),
-
-    case rebar_config:get_xconf(BaseConfig1, enable_profiling, false) of
-        true ->
-            ?CONSOLE("Profiling!\n", []),
-            profile(BaseConfig1, Cmds);
-        false ->
-            run_aux(BaseConfig1, Cmds)
-    end.
+    run_aux(BaseConfig1, Cmds).
 
 load_rebar_app() ->
     %% Pre-load the rebar app so that we get default configuration
@@ -154,58 +147,6 @@ init_config1(BaseConfig) ->
     %% Note the top-level directory for reference
     AbsCwd = filename:absname(rebar_utils:get_cwd()),
     rebar_config:set_xconf(BaseConfig1, base_dir, AbsCwd).
-
-profile(BaseConfig1, Commands) ->
-    ?CONSOLE("Please take note that profiler=[fprof|eflame] is preliminary"
-             " and will be~nreplaced with a different command line flag"
-             " in the next release.~n", []),
-    Profiler = rebar_config:get_global(BaseConfig1, profiler, "fprof"),
-    profile(BaseConfig1, Commands, list_to_atom(Profiler)).
-
-profile(Config, Commands, fprof) ->
-    try
-        fprof:apply(fun run_aux/2, [Config, Commands])
-    after
-        ok = fprof:profile(),
-        ok = fprof:analyse([{dest, "fprof.analysis"}]),
-        case rebar_utils:find_executable("erlgrind") of
-            false ->
-                ?CONSOLE(
-                   "See fprof.analysis (generated from fprof.trace)~n", []),
-                ok;
-            ErlGrind ->
-                Cmd = ?FMT("~s fprof.analysis fprof.cgrind", [ErlGrind]),
-                {ok, []} = rebar_utils:sh(Cmd, [{use_stdout, false},
-                                                abort_on_error]),
-                ?CONSOLE("See fprof.analysis (generated from fprof.trace)"
-                         " and fprof.cgrind~n", []),
-                ok
-        end
-    end;
-profile(Config, Commands, eflame) ->
-    case code:lib_dir(eflame) of
-        {error, bad_name} ->
-            ?ABORT("eflame not found in code path~n", []),
-            ok;
-        EflameDir ->
-            Trace = "eflame.trace",
-            try
-                eflame:apply(normal_with_children, Trace,
-                             rebar, run, [Config, Commands])
-            after
-                %% generate flame graph
-                Script = filename:join(EflameDir, "stack_to_flame.sh"),
-                Svg = "eflame.svg",
-                %% stack_to_flame.sh < eflame.trace > eflame.png
-                Cmd = ?FMT("~s < ~s > ~s", [Script, Trace, Svg]),
-                {ok, []} = rebar_utils:sh(Cmd, [{use_stdout, false},
-                                                abort_on_error]),
-                ?CONSOLE("See eflame.svg (generated from eflame.trace)~n", []),
-                ok
-            end
-    end;
-profile(_Config, _Commands, Profiler) ->
-    ?ABORT("Unsupported profiler: ~s~n", [Profiler]).
 
 run_aux(BaseConfig, Commands) ->
     %% Make sure crypto is running
@@ -318,12 +259,8 @@ save_options(Config, {Options, NonOptArgs}) ->
 
     Config1 = rebar_config:set_xconf(Config, defines, GlobalDefines),
 
-    %% Setup profiling flag
-    Config2 = rebar_config:set_xconf(Config1, enable_profiling,
-                                     proplists:get_bool(profile, Options)),
-
     %% Setup flag to keep running after a single command fails
-    Config3 = rebar_config:set_xconf(Config2, keep_going,
+    Config3 = rebar_config:set_xconf(Config1, keep_going,
                                      proplists:get_bool(keep_going, Options)),
 
     %% Setup flag to enable recursive application of commands
@@ -374,8 +311,8 @@ set_log_level(Config, Options) ->
 %% show version information and halt
 %%
 version() ->
-    {ok, Vsn} = application:get_key(rebar, vsn),
-    ?CONSOLE("rebar ~s ~s ~s ~s\n",
+    {ok, Vsn} = application:get_key(enc, vsn),
+    ?CONSOLE("enc ~s ~s ~s ~s\n",
              [Vsn, ?OTP_INFO, ?BUILD_TIME, ?VCS_INFO]).
 
 
@@ -420,65 +357,9 @@ show_info_maybe_halt(O, Opts, F) ->
 %% print known commands
 %%
 commands() ->
-    S = <<"
-clean                                    Clean
+    S = <<"clean                                    Clean
 compile                                  Compile sources
-
 escriptize                               Generate escript archive
-
-create      template= [var=foo,...]      Create skel based on template and vars
-create-app  [appid=myapp]                Create simple app skel
-create-lib  [libid=mylib]                Create simple lib skel
-create-node [nodeid=mynode]              Create simple node skel
-list-templates                           List available templates
-
-doc                                      Generate Erlang program documentation
-
-prepare-deps                             Run 'rebar -r get-deps compile'
-refresh-deps                             Run 'rebar -r update-deps compile'
-
-check-deps                               Display to be fetched dependencies
-get-deps                                 Fetch dependencies
-update-deps                              Update fetched dependencies
-delete-deps                              Delete fetched dependencies
-list-deps                                List dependencies
-
-generate    [dump_spec=0/1]              Build release with reltool
-overlay                                  Run reltool overlays only
-
-generate-upgrade  previous_release=path  Build an upgrade package
-
-generate-appups   previous_release=path  Generate appup files
-
-eunit       [suite[s]=foo]               Run EUnit tests in foo.erl and
-                                         test/foo_tests.erl
-            [suite[s]=foo] [test[s]=bar] Run specific EUnit tests [first test
-                                         name starting with 'bar' in foo.erl
-                                         and test/foo_tests.erl]
-            [test[s]=bar]                For every existing suite, run the first
-                                         test whose name starts with bar and, if
-                                         no such test exists, run the test whose
-                                         name starts with bar in the suite's
-                                         _tests module.
-            [random_suite_order=true]    Run tests in a random order, either
-            [random_suite_order=Seed]    with a random seed for the PRNG, or a
-                                         specific one.
-
-ct          [suite[s]= [group[s]= [case[s]=]]] Run common_test suites
-
-qc                                       Test QuickCheck properties
-
-xref                                     Run cross reference analysis
-
-dialyze                                  Analyze the code for discrepancies
-build-plt                                Build project-specific PLT
-check-plt                                Check the PLT for consistency and
-                                         rebuild it if it is not up-to-date
-delete-plt                               Delete project-specific PLT
-
-shell                                    Start a shell similar to
-                                         'erl -pa ebin -pa deps/*/ebin'
-
 help                                     Show the program options
 version                                  Show version information
 ">>,
@@ -506,20 +387,8 @@ option_spec_list() ->
      {defines,  $D, undefined,  string,    "Define compiler macro"},
      {jobs,     $j, "jobs",     integer,   JobsHelp},
      {config,   $C, "config",   string,    "Rebar config file to use"},
-     {profile,  $p, "profile",  undefined,
-      "Profile this run of rebar. Via profiler= you can optionally select "
-      "either fprof (default) or eflame. The result can be found in "
-      "fprof.analysis or eflame.svg. Additionally, in fprof mode, if "
-      "erlgrind can be found in $PATH, a Cachegrind file (fprof.cgrind) "
-      "will be generated as well."},
      {keep_going, $k, "keep-going", undefined,
-      "Keep running after a command fails"},
-     {recursive, $r, "recursive", boolean,
-      "Apply all commands recursively. Alternatively, you can selectively"
-      " configure what other commands in addition to the always-recursive"
-      " ones (compile, *-deps) should also be applied recursively."
-      " For example, to make 'eunit' recursive, add {recursive_cmds, [eunit]}"
-      " to rebar.config."}
+      "Keep running after a command fails"}
     ].
 
 %%
@@ -549,36 +418,9 @@ filter_flags(Config, [Item | Rest], Commands) ->
 
 command_names() ->
     [
-     "build-plt",
-     "check-deps",
-     "check-plt",
      "clean",
      "compile",
-     "create",
-     "create-app",
-     "create-lib",
-     "create-node",
-     "ct",
-     "delete-plt",
-     "delete-deps",
-     "dialyze",
-     "doc",
-     "eunit",
      "escriptize",
-     "generate",
-     "generate-appups",
-     "generate-upgrade",
-     "get-deps",
-     "help",
-     "list-deps",
-     "list-templates",
-     "prepare-deps",
-     "qc",
-     "refresh-deps",
-     "update-deps",
-     "overlay",
-     "shell",
-     "version",
      "xref"
     ].
 
