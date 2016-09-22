@@ -108,7 +108,7 @@ get_default_compiler() ->
     protobuffs.
 
 find_proto_compilers() ->
-    {ok, RebarModuleGroups} = application:get_env(rebar, modules),
+    {ok, RebarModuleGroups} = application:get_env(enc, modules),
     {app_dir, Modules} = lists:keyfind(app_dir, 1, RebarModuleGroups),
     [#proto_compiler{key = M:key(),
                      module = M}

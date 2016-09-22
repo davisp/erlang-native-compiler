@@ -112,7 +112,7 @@ run(RawArgs) ->
 
 load_rebar_app() ->
     %% Pre-load the rebar app so that we get default configuration
-    ok = application:load(rebar).
+    ok = application:load(enc).
 
 init_config({Options, _NonOptArgs}) ->
     %% If $HOME/.rebar/config exists load and use as global config

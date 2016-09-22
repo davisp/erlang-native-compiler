@@ -62,8 +62,8 @@ log(Level, Str, Args) ->
     log(standard_io, Level, Str, Args).
 
 log(Device, Level, Str, Args) ->
-    {ok, LogLevel} = application:get_env(rebar, log_level),
-    {ok, LogColored} = application:get_env(rebar, log_colored),
+    {ok, LogLevel} = application:get_env(enc, log_level),
+    {ok, LogColored} = application:get_env(enc, log_colored),
     case should_log(LogLevel, Level) of
         true ->
             io:format(Device, log_prefix(Level, LogColored) ++ Str, Args);

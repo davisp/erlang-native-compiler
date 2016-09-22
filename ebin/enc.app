@@ -1,8 +1,8 @@
 %% -*- mode: erlang;erlang-indent-level: 4;indent-tabs-mode: nil -*-
 %% ex: ts=4 sw=4 ft=erlang et
 
-{application, rebar,
- [{description, "Rebar: Erlang Build Tool"},
+{application, enc,
+ [{description, "enc: Erlang Native Compiler"},
   {vsn, "2.6.4"},
   {modules, [ rebar,
               rebar_abnfc_compiler,
