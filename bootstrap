@@ -1,0 +1,167 @@
+#!/usr/bin/env escript
+%% -*- mode: erlang;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+%% ex: ft=erlang ts=4 sw=4 et
+
+main(Args) ->
+    case lists:member("--help", Args) of
+        true ->
+            usage(),
+            halt(0);
+        false ->
+            ok
+    end,
+
+    %% Get a string repr of build time
+    Built = build_time(),
+
+    %% Get a string repr of first matching VCS changeset
+    VcsInfo = vcs_info([{hg, ".hg", "hg identify -i", "hg status"},
+                        {git, ".git", "git describe --always --tags",
+                         "git status -s"}]),
+
+    %% Check for force=1 flag to force a rebuild
+    case lists:member("force=1", Args) of
+        true ->
+            rm("ebin/*.beam");
+        false ->
+            case filelib:is_file("ebin/rebar.beam") of
+               true -> rm("ebin/rebar.beam");
+               false -> io:fwrite("No beam files found.~n")
+            end
+    end,
+
+    %% Add check for debug flag
+    DebugFlag = case lists:member("debug", Args) of
+                    true -> debug_info;
+                    false -> undefined
+                end,
+
+    %% Extract the system info of the version of OTP we use to compile rebar
+    OtpInfo = string:strip(erlang:system_info(otp_release), both, $\n),
+
+    %% Types dict:dict() and digraph:digraph() have been introduced in
+    %% Erlang 17.
+    %% At the same time, their counterparts dict() and digraph() are to be
+    %% deprecated in Erlang 18. namespaced_types option is used to select
+    %% proper type name depending on the OTP version used.
+    NamespacedTypes = case is_otp(OtpInfo, "^[0-9]+") of
+                          true -> {d, namespaced_types};
+                          false -> undefined
+                      end,
+
+    %% Compile all src/*.erl to ebin
+    %% To not accidentally try to compile files like Mac OS X resource forks,
+    %% we only look for rebar source files that start with a letter.
+    case make:files(filelib:wildcard("src/[a-zA-Z]*.erl"),
+                    [{outdir, "ebin"}, {i, "include"},
+                     DebugFlag,
+                     NamespacedTypes,
+                     {d, 'BUILD_TIME', Built},
+                     {d, 'VCS_INFO', VcsInfo},
+                     {d, 'OTP_INFO', OtpInfo}]) of
+        up_to_date ->
+            ok;
+        error ->
+            io:format("Failed to compile rebar files!\n"),
+            halt(1)
+    end,
+
+    %% Make sure file:consult can parse the .app file
+    case file:consult("ebin/rebar.app") of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            io:format("Invalid syntax in ebin/rebar.app: ~p\n", [Reason]),
+            halt(1)
+    end,
+
+    %% Add ebin/ to our path
+    true = code:add_path("ebin"),
+
+    %% Run rebar compile to do proper .app validation etc.
+    %% and rebar escriptize to create the rebar script
+    RebarArgs = Args -- ["debug"], %% Avoid trying to run 'debug' command
+    rebar:main(["compile", "escriptize"] ++ RebarArgs),
+
+    %% Finally, update executable perms for our script on *nix,
+    %%  or write out script files on win32.
+    case os:type() of
+        {unix,_} ->
+            [] = os:cmd("chmod u+x rebar"),
+            ok;
+        {win32,_} ->
+            write_windows_scripts(),
+            ok;
+        _ ->
+            ok
+    end,
+
+    %% Add a helpful message
+    io:format("Congratulations! You now have a self-contained script called"
+              " \"rebar\" in\n"
+              "your current working directory. "
+              "Place this script anywhere in your path\n"
+              "and you can use rebar to build OTP-compliant apps.\n").
+
+usage() ->
+  io:format("Usage: bootstrap [OPTION]...~n"),
+  io:format("    force=1   unconditional build~n"),
+  io:format("    debug     add debug information~n").
+
+is_otp(OtpInfo, Regex) ->
+     case re:run(OtpInfo, Regex, [{capture, none}]) of
+          match -> true;
+          nomatch -> false
+     end.
+
+rm(Path) ->
+    NativePath = filename:nativename(Path),
+    Cmd = case os:type() of
+              {unix,_} -> "rm -f ";
+              {win32,_} -> "del /q "
+          end,
+    [] = os:cmd(Cmd ++ NativePath),
+    ok.
+
+build_time() ->
+    {{Y, M, D}, {H, Min, S}} = calendar:now_to_universal_time(rebar_now()),
+    lists:flatten(io_lib:format("~4..0w~2..0w~2..0w_~2..0w~2..0w~2..0w",
+                                [Y, M, D, H, Min, S])).
+rebar_now() ->
+    case erlang:function_exported(erlang, timestamp, 0) of
+        true ->
+            erlang:timestamp();
+        false ->
+            %% erlang:now/0 was deprecated in 18.0, and as the escript has to
+            %% pass erl_lint:module/1 (even without -mode(compile)), we would
+            %% see a deprecation warning for erlang:now/0.  One solution is to
+            %% use -compile({nowarn_deprecated_function, [{erlang, now, 0}]}),
+            %% but that would raise a warning in versions older than 18.0.
+            %% Calling erlang:now/0 via apply/3 avoids that.
+            apply(erlang, now, [])
+    end.
+
+vcs_info([]) ->
+    "No VCS info available.";
+vcs_info([{Id, Dir, VsnCmd, StatusCmd} | Rest]) ->
+    case filelib:is_dir(Dir) of
+        true ->
+            Vsn = string:strip(os:cmd(VsnCmd), both, $\n),
+            Status = case string:strip(os:cmd(StatusCmd), both, $\n) of
+                         [] ->
+                             "";
+                         _ ->
+                             "-dirty"
+                     end,
+            lists:concat([Id, " ", Vsn, Status]);
+        false ->
+            vcs_info(Rest)
+    end.
+
+write_windows_scripts() ->
+    CmdScript=
+        "@echo off\r\n"
+        "setlocal\r\n"
+        "set rebarscript=%~f0\r\n"
+        "escript.exe \"%rebarscript:.cmd=%\" %*\r\n",
+    ok = file:write_file("rebar.cmd", CmdScript).
