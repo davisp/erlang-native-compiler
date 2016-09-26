@@ -14,4 +14,8 @@ Since rebar3 refuses to add support for NIFs I've created this self contained es
 {post_hooks, [{"", clean, "./enc clean"}]}.
 ```
 
-After that enc should read your old rebar.config `port_specs` and `port_env` settings as expected (it is rebar2's port compiler after all...).
+After that enc should read your old rebar.config `port\_specs` and `port\_env` settings as expected (it is rebar2's port compiler after all...).
+
+## Compatibility Note
+
+Remember that you'll want to make sure and build `enc` with the oldest Erlang VM you want to support.
