@@ -730,6 +730,8 @@ default_env() ->
       "$CC /c $CFLAGS $DRV_CFLAGS $PORT_IN_FILES /Fo$PORT_OUT_FILE"},
      {"win32", "DRV_LINK_TEMPLATE",
       "$LINKER $PORT_IN_FILES $LDFLAGS $DRV_LDFLAGS /OUT:$PORT_OUT_FILE"},
+     {"win32", "DRV_LINK_CXX_TEMPLATE",
+      "$LINKER $PORT_IN_FILES $LDFLAGS $DRV_LDFLAGS /OUT:$PORT_OUT_FILE"},
      %% DRV_* and EXE_* Templates are identical
      {"win32", "EXE_CXX_TEMPLATE",
       "$CXX /c $CXXFLAGS $EXE_CFLAGS $PORT_IN_FILES /Fo$PORT_OUT_FILE"},
@@ -737,11 +739,16 @@ default_env() ->
       "$CC /c $CFLAGS $EXE_CFLAGS $PORT_IN_FILES /Fo$PORT_OUT_FILE"},
      {"win32", "EXE_LINK_TEMPLATE",
       "$LINKER $PORT_IN_FILES $LDFLAGS $EXE_LDFLAGS /OUT:$PORT_OUT_FILE"},
+     {"win32", "EXE_LINK_CXX_TEMPLATE",
+      "$LINKER $PORT_IN_FILES $LDFLAGS $EXE_LDFLAGS /OUT:$PORT_OUT_FILE"},
      %% ERL_CFLAGS are ok as -I even though strictly it should be /I
      {"win32", "ERL_LDFLAGS",
       " /LIBPATH:$ERL_EI_LIBDIR erl_interface.lib ei.lib"},
      {"win32", "DRV_CFLAGS", "/Zi /Wall $ERL_CFLAGS"},
-     {"win32", "DRV_LDFLAGS", "/DLL $ERL_LDFLAGS"}
+     {"win32", "DRV_LDFLAGS", "/DLL $ERL_LDFLAGS"},
+     %% Provide some default Windows defines for convenience
+     {"win32", "CFLAGS", "/Wall /DWIN32 /D_WINDOWS /D_WIN32 /DWINDOWS /Ic_src $CFLAGS"},
+     {"win32", "CXXFLAGS", "/Wall /DWIN32 /D_WINDOWS /D_WIN32 /DWINDOWS /Ic_src $CXXFLAGS"}
     ].
 
 get_tool(Arch, Tool, Default) ->
