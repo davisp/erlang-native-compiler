@@ -743,7 +743,7 @@ default_env() ->
       "$LINKER $PORT_IN_FILES $LDFLAGS $EXE_LDFLAGS /OUT:$PORT_OUT_FILE"},
      %% ERL_CFLAGS are ok as -I even though strictly it should be /I
      {"win32", "ERL_LDFLAGS",
-      " /LIBPATH:$ERL_EI_LIBDIR erl_interface.lib ei.lib"},
+      " /LIBPATH:$ERL_EI_LIBDIR ei.lib"},
      {"win32", "DRV_CFLAGS", "/Zi /Wall $ERL_CFLAGS"},
      {"win32", "DRV_LDFLAGS", "/DLL $ERL_LDFLAGS"},
      %% Provide some default Windows defines for convenience
