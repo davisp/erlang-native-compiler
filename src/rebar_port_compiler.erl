@@ -136,7 +136,7 @@ info_help(Description) ->
        "           CXXFLAGS - C++ compiler~n"
        "           LDFLAGS  - Link flags~n"
        "           ERL_CFLAGS  - default -I paths for erts and ei~n"
-       "           ERL_LDFLAGS - default -L and -lerl_interface -lei~n"
+       "           ERL_LDFLAGS - default -L and -lei~n"
        "           DRV_CFLAGS  - flags that will be used for compiling~n"
        "           DRV_LDFLAGS - flags that will be used for linking~n"
        "           EXE_CFLAGS  - flags that will be used for compiling~n"
