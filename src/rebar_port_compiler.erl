@@ -640,11 +640,11 @@ target_type1("")     -> exe;
 target_type1(".exe") -> exe.
 
 erl_interface_dir(Subdir) ->
-    case code:lib_dir(erl_interface, Subdir) of
+    case code:lib_dir(erl_interface) of
         {error, bad_name} ->
             throw({error, {erl_interface,Subdir,"code:lib_dir(erl_interface)"
                            "is unable to find the erl_interface library."}});
-        Dir -> Dir
+        Dir -> filename:join(Dir, Subdir)
     end.
 
 default_env() ->
