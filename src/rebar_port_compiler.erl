@@ -34,6 +34,7 @@
          info/2]).
 
 -include("rebar.hrl").
+-include_lib("kernel/include/file.hrl").
 
 -record(spec, {type::'drv' | 'exe',
                link_lang::'cc' | 'cxx',
@@ -136,7 +137,7 @@ info_help(Description) ->
        "           CXXFLAGS - C++ compiler~n"
        "           LDFLAGS  - Link flags~n"
        "           ERL_CFLAGS  - default -I paths for erts and ei~n"
-       "           ERL_LDFLAGS - default -L and -lerl_interface -lei~n"
+       "           ERL_LDFLAGS - default -L and -lei~n"
        "           DRV_CFLAGS  - flags that will be used for compiling~n"
        "           DRV_LDFLAGS - flags that will be used for linking~n"
        "           EXE_CFLAGS  - flags that will be used for compiling~n"
@@ -348,12 +349,15 @@ parse_bin_deps(Bin, Deps) ->
 needs_link(SoName, []) ->
     filelib:last_modified(SoName) == 0;
 needs_link(SoName, NewBins) ->
-    MaxLastMod = lists:max([filelib:last_modified(B) || B <- NewBins]),
+    NewBinsAndEi = [lists:concat([erl_interface_dir(lib), "/", "libei.a"]) | NewBins],
+    FileInfos = [element(2, X) || X <- [file:read_file_info(F) || F <- NewBinsAndEi], element(1, X) == ok],
+    MaxLastMtime = lists:max([F#file_info.mtime || F <- FileInfos]),
+    MaxLastCtime = lists:max([F#file_info.ctime || F <- FileInfos]),
     case filelib:last_modified(SoName) of
         0 ->
             true;
         Other ->
-            MaxLastMod >= Other
+            (MaxLastMtime >= Other) and (MaxLastCtime >= Other)
     end.
 
 %%
